@@ -1,0 +1,185 @@
+Vignesh Lal
+Microbiome-Analysis-with-QIIME2
+
+Any number in (x) will be on a word doc
+
+qiime tools import \
+--type 'SampleData[PairedEndSequencesWithQuality]' \
+--input-path sequences \
+--input-format CasavaOneEightSingleLanePerSampleDirFmt \
+--output-path demux.qza
+
+create a visualization
+qiime demux summarize \
+--i-data demux.qza \
+--o-visualization demux.qzv
+
+Trim and trunkcade
+qiime dada2 denoise-paired \
+--i-demultiplexed-seqs demux.qza \
+--p-trunc-len-f 200 \
+--p-trim-left-f 23 \
+--p-trunc-len-r 200 \
+--p-trim-left-r 20 \
+--o-representative-sequences rep-seqs.qza \
+--o-table table.qza \
+--o-denoising-stats stats.qza
+
+visualization is on the word doc (1)
+
+You can open the visualization by either visiting view.qiime2.org and uploading your .qzv file or by typing
+qiime tools view demux.qzv
+
+Denoising to remove any potential contamination
+qiime dada2 denoise-paired \
+--i-demultiplexed-seqs demux.qza \
+--p-trunc-len-f 200 \
+--p-trim-left-f 23 \
+--p-trunc-len-r 200 \
+--p-trim-left-r 20 \
+--o-representative-sequences rep-seqs.qza \
+--o-table table.qza \
+--o-denoising-stats stats.qza
+
+visualizations
+qiime feature-table summarize \
+--i-table table.qza \
+--o-visualization table.qzv \
+--m-sample-metadata-file metadata.txt
+qiime feature-table tabulate-seqs \
+--i-data rep-seqs.qza \
+--o-visualization rep-seqs.qzv
+
+visualize the table.qzv file
+any samples with fewer than 10,000 reads will probably need to be cut. How many samples is that?
+None since all the values were above 10,000
+
+We have to download the taxonomy data first.
+wget \
+  -O "gg-13-8-99-515-806-nb-classifier.qza" \
+  "https://data.qiime2.org/classifiers/sklearn-1.4.2/greengenes/gg-13-8-99-515-806-nb-classifier.qza"
+
+we can assign taxonomy
+qiime feature-classifier classify-sklearn \
+--i-classifier gg-13-8-99-515-806-nb-classifier.qza \
+--i-reads rep-seqs.qza \
+--o-classification taxonomy.qza
+
+visualization 
+qiime metadata tabulate \
+--m-input-file taxonomy.qza \
+--o-visualization taxonomy.qzv
+
+What do you see if you filter by taxon? What is this file showing you?
+These are samples from frogs...what else, besides bacteria, could theoretically be amplified if you're amplifying 16S rRNA?
+You can see that there are files named as archaea and bacteria as well. 
+
+qiime taxa filter-table \
+--i-table table.qza \
+--i-taxonomy taxonomy.qza \
+--p-include p__ \
+--p-exclude mitochondria,chloroplast \
+--o-filtered-table table-with-phyla-no-mitochondria-chloroplast.qza
+qiime taxa filter-table \
+--i-table table-with-phyla-no-mitochondria-chloroplast.qza \
+--i-taxonomy taxonomy.qza \
+--p-exclude "k__Archaea" \
+--o-filtered-table table-with-phyla-no-mitochondria-chloroplasts-archaea.qza
+qiime taxa filter-table \
+--i-table table-with-phyla-no-mitochondria-chloroplasts-archaea.qza \
+--i-taxonomy taxonomy.qza \
+--p-exclude "k__Eukaryota" \
+--o-filtered-table table-with-phyla-no-mitochondria-chloroplasts-archaea-eukaryota.qza
+qiime taxa filter-seqs \
+--i-sequences rep-seqs.qza \
+--i-taxonomy taxonomy.qza \
+--p-include p__ \
+--p-exclude mitochondria,chloroplast \
+--o-filtered-sequences rep-seqs-with-phyla-no-mitochondria-chloroplast.qza
+qiime taxa filter-seqs \
+--i-sequences rep-seqs-with-phyla-no-mitochondria-chloroplast.qza \
+--i-taxonomy taxonomy.qza \
+--p-exclude "k__Archaea" \
+--o-filtered-sequences rep-seqs-with-phyla-no-mitochondria-chloroplasts-archaea.qza
+qiime taxa filter-seqs \
+--i-sequences rep-seqs-with-phyla-no-mitochondria-chloroplasts-archaea.qza \
+--i-taxonomy taxonomy.qza \
+--p-exclude "k__Eukaryota" \
+--o-filtered-sequences rep-seqs-with-phyla-no-mitochondria-chloroplasts-archaea-eukaryota.qza
+
+rename
+mv table-with-phyla-no-mitochondria-chloroplasts-archaea-eukaryota.qza filtered-table.qza
+mv rep-seqs-with-phyla-no-mitochondria-chloroplasts-archaea-eukaryota.qza filtered-rep-seqs.qza
+
+visualization 
+qiime taxa barplot \
+--i-table filtered-table.qza \
+--i-taxonomy taxonomy.qza \
+--m-metadata-file metadata.txt \
+--o-visualization taxa-bar-plots.qzv
+
+what do you notice? How does changing the different levels change the visualization? Why do you think this is? When you sort the samples by life stage or site of collection, do you notice any trends?
+You can see the gradient for the abundance of microbioata for each sample and compare them to each other. When you sort by life stages you can notice that the tadpoles have a lower microbiota.
+
+we will build a phylogenetic tree
+qiime phylogeny align-to-tree-mafft-fasttree \
+--i-sequences filtered-rep-seqs.qza \
+--o-alignment aligned-rep-seqs.qza \
+--o-masked-alignment masked-aligned-rep-seqs.qza \
+--o-tree unrooted-tree.qza \
+--o-rooted-tree rooted-tree.qza
+
+we will normalize read counts across samples by rarefying the sequences according to the sample with the lowest read number.
+qiime feature-table summarize \
+--i-table filtered-table.qza \
+--o-visualization filtered-table.qzv \
+--m-sample-metadata-file metadata.txt
+
+the lowest samples are thousands of reads smaller than the next, you might choose a number that excludes those in order to preserve as much data as possible from the others
+qiime diversity core-metrics-phylogenetic --i-phylogeny rooted-tree.qza --i-table filtered-table.qza --p-sampling-depth xxxxx --m-metadata-file metadata.txt --output-dir diversity-metrics-results
+
+In your own words, summarize the briefly what each of these metrics is doing and how they are different.
+answer 
+
+qiime diversity alpha-group-significance \
+--i-alpha-diversity diversity-metrics-results/observed_features_vector.qza \
+--m-metadata-file metadata.txt \
+--o-visualization diversity-metrics-results/observed-features-group-significance.qzv
+
+qiime diversity alpha-group-significance \
+--i-alpha-diversity diversity-metrics-results/shannon_vector.qza \
+--m-metadata-file metadata.txt \
+--o-visualization diversity-metrics-results/shannon-group-significance.qzv
+
+Take a screenshot of your Observed Features for life stage and Shannon for site of collection (2). Were any comparisons significant for any metric? If so, which ones?
+Adult frogs to the juveniles were not significant since the pvalue was over 0.05 for both of the meterics used. Comparing it to the rest of the samples with tadpoles had significanes.
+
+visualizing the Bray Curtis data
+qiime diversity beta-group-significance \
+--i-distance-matrix diversity-metrics-results/bray_curtis_distance_matrix.qza \
+--m-metadata-file metadata.txt \
+--m-metadata-column life_stage \
+--o-visualization diversity-metrics-results/bray-curtis-life-stage-significance.qzv \
+--p-pairwise
+qiime diversity beta-group-significance \
+--i-distance-matrix diversity-metrics-results/bray_curtis_distance_matrix.qza \
+--m-metadata-file metadata.txt \
+--m-metadata-column site \
+--o-visualization diversity-metrics-results/bray-curtis-site-significance.qzv
+
+Do any life stages appear to have significantly different community composition based on either metric? Please include a screenshot of the table for both Bray Curtis and Weighted Unifrac (3). For the site comparison, we can just look at the p value. Do the sites differ in community composition?
+The adult to the juveniles have a larger pvalue which means they are not signinficant but when compared to the adults to tadpoles and the tadpoles to the juveniles than the pvalues are signinficant.
+
+find if specific taxa are differentially abundant based on our metadata columns.
+qiime composition ancombc \
+  --i-table filtered-table.qza \
+  --m-metadata-file metadata.txt \
+  --p-formula 'site' \
+  --o-differentials ancombc-site.qza
+
+qiime composition da-barplot \
+  --i-data ancombc-site.qza \
+  --p-significance-threshold 0.05 \
+  --o-visualization da-barplot-site.qzv
+
+Were there any differentially expressed taxa in the different sites? If so, provide at most 3 of them. You should repeat this analysis for the life stage as well. (4)
